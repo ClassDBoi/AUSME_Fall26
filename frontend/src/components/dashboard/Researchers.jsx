@@ -1,0 +1,289 @@
+import React, { useCallback } from "react";
+import { Link } from "react-router-dom";
+
+import CollegeBadge from "../common/CollegeBadge";
+import ExpandableText from "../common/ExpandableText";
+import FieldGrid from "../common/FieldGrid";
+import KeywordChips from "../common/KeywordChips";
+import MatchCarousel from "../common/MatchCarousel";
+import ListToolbar, { FilterSelect } from "../common/ListToolbar";
+import ResearcherPhoto from "../common/ResearcherPhoto";
+import {
+    cardStyle, detailCardStyle, detailColumnStyle, layoutStyle, linkStyle, listColumnStyle,
+    metaStyle, mutedStyle, pageStyle, sectionTitleStyle, selectedCardStyle,
+} from "../common/styles";
+import useAutoSelectFirst from "../../hooks/useAutoSelectFirst";
+import useDetail from "../../hooks/useDetail";
+import useFilterOptions from "../../hooks/useFilterOptions";
+import useList from "../../hooks/useList";
+import useListParams from "../../hooks/useListParams";
+import useScrollToDetailsOnSmallScreens from "../../hooks/useScrollToDetailsOnSmallScreens";
+import { activeFilterChips } from "../../lib/filters";
+import { NOT_AVAILABLE, formatDate } from "../../lib/format";
+
+// Papers shown in the researcher panel; the rest are one click away on the Papers page.
+const PAPERS_SHOWN = 3;
+
+// Every URL parameter this page uses, with its default.
+const DEFAULTS = { search: "", college: "", department: "", sort: "name", order: "asc", selected: "" };
+
+const SORT_OPTIONS = [
+    { value: "name", label: "Name" },
+    { value: "department", label: "Department" },
+    { value: "college", label: "College" },
+    { value: "auid", label: "AUID" },
+    { value: "papers", label: "Number of papers" },
+];
+
+const FILTERS = [
+    { key: "search", label: "Search", format: (value) => `"${value}"` },
+    { key: "college", label: "College" },
+    { key: "department", label: "Department" },
+];
+
+const idOf = (researcher) => researcher.auid;
+
+function Researchers() {
+    const [params, update, clear] = useListParams(DEFAULTS);
+    const options = useFilterOptions();
+
+    const { data, loading, error } = useList("/researchers/", {
+        search: params.search,
+        college: params.college,
+        department: params.department,
+        sort: params.sort,
+        order: params.order,
+    });
+    const researchers = data || [];
+    const detail = useDetail("/researchers/", params.selected);
+    const matches = useDetail("/researchers/", params.selected, "matches/");
+
+    const scrollToDetails = useScrollToDetailsOnSmallScreens("[data-researcher-details]", detail.data);
+    // Clicking the item already shown only scrolls to it (on phones).
+    const select = useCallback((auid) => {
+        if (auid === params.selected) {
+            scrollToDetails(true);
+            return;
+        }
+        scrollToDetails();
+        update({ selected: auid }, { keepPage: true, push: true });
+    }, [update, scrollToDetails, params.selected]);
+    const selectFirst = useCallback((auid) => update({ selected: auid }, { keepPage: true }), [update]);
+    useAutoSelectFirst(researchers, idOf, params.selected, loading, selectFirst);
+
+    // Departments of the chosen college only.
+    const departments = (options?.researchers.departments || [])
+        .filter((item) => !params.college || item.college === params.college)
+        .map((item) => item.department);
+
+    const canClear = Boolean(params.search || params.college || params.department
+        || params.sort !== DEFAULTS.sort || params.order !== DEFAULTS.order);
+
+    const selected = detail.data;
+    // Most recent first.
+    const papers = [...(selected?.papers || [])].sort(
+        (a, b) => String(b.publication_date || "").localeCompare(String(a.publication_date || ""))
+    );
+    const allPapersLink = selected
+        ? `/papers?researcher=${encodeURIComponent(selected.auid)}&sort=date&order=desc`
+        : "";
+
+    return (
+        <div className="page" style={pageStyle}>
+            <h1>Researchers</h1>
+
+            <ListToolbar
+                search={params.search}
+                onSearch={(search) => update({ search })}
+                placeholder="Search by name, AUID, department or college..."
+                sortOptions={SORT_OPTIONS}
+                sort={params.sort}
+                order={params.order}
+                onSortChange={update}
+                resultText={loading && !data ? "Loading researchers..." : `${researchers.length} researchers found`}
+                activeFilters={activeFilterChips(FILTERS, params, update)}
+                canClear={canClear}
+                onClear={clear}
+            >
+                <FilterSelect
+                    label="College"
+                    value={params.college}
+                    onChange={(college) => update({ college, department: "" })}
+                    options={options?.researchers.colleges || []}
+                    allLabel="All colleges"
+                />
+                <FilterSelect
+                    label="Department"
+                    value={params.department}
+                    onChange={(department) => update({ department })}
+                    options={departments}
+                    allLabel="All departments"
+                />
+            </ListToolbar>
+
+            {error && <p style={{ color: "red" }}>{error}</p>}
+
+            <div style={layoutStyle}>
+                <div style={listColumnStyle}>
+                    {!loading && researchers.length === 0 && (
+                        <p style={mutedStyle}>No researchers match your search.</p>
+                    )}
+
+                    {researchers.map((researcher) => (
+                        <div
+                            key={researcher.auid}
+                            data-researcher-card
+                            style={researcher.auid === params.selected ? selectedCardStyle : cardStyle}
+                            onClick={() => select(researcher.auid)}
+                        >
+                            <div style={cardHeaderStyle}>
+                                <ResearcherPhoto auid={researcher.auid} name={researcher.name} size={48} />
+                                <div style={{ minWidth: 0 }}>
+                                    <h3 style={{ margin: "0 0 2px", fontSize: "17px" }}>{researcher.name}</h3>
+                                    <p style={{ ...metaStyle, margin: 0 }}>{researcher.title || NOT_AVAILABLE}</p>
+                                    <p style={cardInfoStyle}>{researcher.department || NOT_AVAILABLE}</p>
+                                    <p style={{ ...cardInfoStyle, display: "flex", alignItems: "center", gap: "6px" }}>
+                                        <CollegeBadge college={researcher.college} size={18} />
+                                        {researcher.college || "College not available"}
+                                    </p>
+                                    <p style={{ ...cardInfoStyle, fontSize: "13px" }}>
+                                        {researcher.paper_count} paper{researcher.paper_count === 1 ? "" : "s"}
+                                        {" · "}AUID {researcher.auid}
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+
+                <div data-researcher-details style={{ ...detailColumnStyle, flex: 2 }}>
+                    {detail.loading && <p>Loading details...</p>}
+                    {detail.error && <p style={{ color: "red" }}>{detail.error}</p>}
+
+                    {selected && (
+                        <div style={detailCardStyle}>
+                            {/* Photo beside the name and descriptors; on phones the
+                                descriptors move below (see .detail-header in index.css). */}
+                            <div className="detail-header">
+                                <div className="detail-header-photo">
+                                    <ResearcherPhoto auid={selected.auid} name={selected.name} size={84} />
+                                </div>
+                                <div style={{ minWidth: 0, alignSelf: "center" }}>
+                                    <h2 style={{ margin: "0 0 2px" }}>{selected.name}</h2>
+                                    <p style={{ ...metaStyle, margin: 0 }}>{selected.title || NOT_AVAILABLE}</p>
+                                </div>
+                                <div className="detail-header-fields">
+                                    <FieldGrid
+                                        fields={[
+                                            { label: "Department", value: selected.department || NOT_AVAILABLE },
+                                            {
+                                                label: "College",
+                                                value: (
+                                                    <span style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                                                        <CollegeBadge college={selected.college} size={22} />
+                                                        {selected.college || NOT_AVAILABLE}
+                                                    </span>
+                                                ),
+                                            },
+                                            { label: "AUID", value: selected.auid },
+                                        ]}
+                                    />
+                                </div>
+                            </div>
+
+                            <MatchCarousel
+                                key={`matches-${selected.auid}`}
+                                kind="researcher"
+                                data={matches.data}
+                                loading={matches.loading}
+                            />
+
+                            <h3 style={sectionTitleStyle}>
+                                Research Papers ({papers.length})
+                                {papers.length > PAPERS_SHOWN && (
+                                    <span style={{ ...mutedStyle, fontWeight: 400, fontSize: "14px" }}>
+                                        {" "}· showing the {PAPERS_SHOWN} most recent
+                                    </span>
+                                )}
+                            </h3>
+
+                            {papers.length > 0 ? (
+                                papers.slice(0, PAPERS_SHOWN).map((paper) => (
+                                    <div key={paper.id} style={paperStyle}>
+                                        <Link to={`/papers?selected=${paper.id}`} style={{ ...linkStyle, fontSize: "16px" }}>
+                                            {paper.title}
+                                        </Link>
+
+                                        <p style={{ ...metaStyle, ...mutedStyle, marginTop: "6px" }}>
+                                            {formatDate(paper.publication_date)}
+                                            {" · "}{paper.published_in || "Journal not available"}
+                                            {" · "}{paper.total_citations ?? 0} citations
+                                        </p>
+
+                                        <ExpandableText
+                                            key={paper.abstract}
+                                            title="Abstract"
+                                            text={paper.abstract}
+                                            previewWords={40}
+                                            noun="abstract"
+                                        />
+
+                                        <KeywordChips
+                                            items={(paper.keywords || []).map((k) => ({ label: k.keyword, score: k.score }))}
+                                        />
+                                    </div>
+                                ))
+                            ) : (
+                                <p>No associated papers found.</p>
+                            )}
+
+                            {papers.length > PAPERS_SHOWN && (
+                                <Link to={allPapersLink} style={allPapersButtonStyle}>
+                                    View all {papers.length} papers by {selected.name}
+                                    {" "}<i className="fa-solid fa-arrow-right" />
+                                </Link>
+                            )}
+                        </div>
+                    )}
+
+                    {!loading && researchers.length === 0 && !params.selected && (
+                        <p style={mutedStyle}>No researcher to show.</p>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+}
+
+const cardHeaderStyle = {
+    display: "flex",
+    alignItems: "flex-start",
+    gap: "14px",
+};
+
+const cardInfoStyle = {
+    ...metaStyle,
+    ...mutedStyle,
+    margin: "4px 0 0",
+    fontSize: "14px",
+};
+
+const allPapersButtonStyle = {
+    display: "inline-block",
+    marginTop: "18px",
+    padding: "10px 16px",
+    borderRadius: "8px",
+    backgroundColor: "var(--auburn-navy)",
+    color: "white",
+    textDecoration: "none",
+    fontWeight: 600,
+};
+
+const paperStyle = {
+    padding: "15px",
+    marginTop: "15px",
+    border: "1px solid #eee",
+    borderRadius: "8px",
+};
+
+export default Researchers;

@@ -1,0 +1,27 @@
+# Virtual environments (.venv for Django, .venv-pipeline for the matching pipeline)
+.venv*/
+# Environment variables / secrets
+.env
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+# PyCharm
+.idea/
+
+# Django / local files
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# React/Vite
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+data/*.json
+
+# Matching pipeline outputs contain client text
+matching_pipeline/runs/

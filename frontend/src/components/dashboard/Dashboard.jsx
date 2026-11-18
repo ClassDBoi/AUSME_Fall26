@@ -1,0 +1,188 @@
+import React, { useEffect, useState } from "react";
+
+import {
+    BarChart,
+    Bar,
+    XAxis,
+    YAxis,
+    CartesianGrid,
+    Tooltip,
+    LabelList,
+    ResponsiveContainer
+} from "recharts";
+
+// Falls back to the Vite dev-server proxy (/api) when VITE_API_BASE is not set.
+const API_BASE = (import.meta.env.VITE_API_BASE || "/api").replace(/\/+$/, "");
+
+function HistogramCard({ title, data, xLabel = "Word-count range", unit = "words", note }) {
+    return (
+        <div style={chartCard}>
+            <h3>{title}</h3>
+
+            <ResponsiveContainer width="100%" height={320}>
+                <BarChart
+                    data={data}
+                    margin={{ top: 25, right: 20, left: 0, bottom: 20 }}
+                >
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis
+                        dataKey="range"
+                        interval={0}
+                        tick={{ fontSize: 12 }}
+                        label={{
+                            value: xLabel,
+                            position: "insideBottom",
+                            offset: -10
+                        }}
+                    />
+                    <YAxis allowDecimals={false} />
+                    <Tooltip
+                        formatter={(value) => [value, "Records"]}
+                        labelFormatter={(label) => `${label} ${unit}`}
+                    />
+                    <Bar dataKey="count" fill="#236FA5">
+                        <LabelList dataKey="count" position="top" />
+                    </Bar>
+                </BarChart>
+            </ResponsiveContainer>
+
+            {note && <p style={chartNoteStyle}>{note}</p>}
+        </div>
+    );
+}
+
+function Dashboard() {
+    const [stats, setStats] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState("");
+
+    useEffect(() => {
+        const controller = new AbortController();
+
+        async function loadStats() {
+            setLoading(true);
+            setError("");
+
+            try {
+                // no-store: always show statistics from the current database.
+                const response = await fetch(`${API_BASE}/dashboard/`, {
+                    signal: controller.signal,
+                    cache: "no-store",
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Failed to fetch dashboard data (${response.status})`);
+                }
+
+                setStats(await response.json());
+            } catch (err) {
+                if (err.name !== "AbortError") {
+                    setError(err.message);
+                }
+            } finally {
+                if (!controller.signal.aborted) {
+                    setLoading(false);
+                }
+            }
+        }
+
+        loadStats();
+        return () => controller.abort();
+    }, []);
+
+    if (loading) {
+        return <p>Loading dashboard...</p>;
+    }
+
+    if (error) {
+        return <p role="alert" style={{ color: "red" }}>Error: {error}</p>;
+    }
+
+    return (
+        <div className="page" style={{ padding: "24px 40px 16px" }}>
+            <h1>Research Dashboard</h1>
+
+            <div style={statsContainer}>
+                <div style={cardStyle}>
+                    <h2>Researchers</h2>
+                    <h1>{stats.researchers}</h1>
+                </div>
+
+                <div style={cardStyle}>
+                    <h2>Research Papers</h2>
+                    <h1>{stats.papers}</h1>
+                </div>
+
+                <div style={cardStyle}>
+                    <h2>Funding Opportunities</h2>
+                    <h1>{stats.opportunities}</h1>
+                </div>
+            </div>
+
+            <h2 style={{ marginTop: "40px" }}>Dataset Analysis</h2>
+            <p style={chartNoteStyle}>Calculated from the current database on each page load.</p>
+
+
+            <div style={chartsContainer}>
+                <HistogramCard
+                    title="Paper Title Lengths"
+                    data={stats.paper_title_lengths}
+                />
+
+                <HistogramCard
+                    title="Paper Abstract / Description Lengths"
+                    data={stats.paper_abstract_lengths}
+                />
+
+                <HistogramCard
+                    title="Short Funding Description Lengths"
+                    data={stats.funding_description_lengths}
+                />
+
+                <HistogramCard
+                    title="Full Funding Announcement Lengths"
+                    data={stats.funding_full_announcement_lengths}
+                />
+            </div>
+        </div>
+    );
+}
+
+const statsContainer = {
+    display: "flex",
+    gap: "20px",
+    flexWrap: "wrap"
+};
+
+const cardStyle = {
+    padding: "25px",
+    border: "1px solid #ddd",
+    borderRadius: "10px",
+    minWidth: "220px",
+    backgroundColor: "white",
+    boxShadow: "0 2px 6px rgba(0,0,0,0.08)"
+};
+
+const chartsContainer = {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 420px), 1fr))",
+    gap: "20px",
+    marginTop: "20px"
+};
+
+const chartCard = {
+    backgroundColor: "white",
+    padding: "20px",
+    border: "1px solid #ddd",
+    borderRadius: "10px",
+    minWidth: 0
+};
+
+const chartNoteStyle = {
+    margin: "8px 0 0",
+    color: "#666",
+    fontSize: "0.9rem",
+    lineHeight: 1.4
+};
+
+export default Dashboard;
