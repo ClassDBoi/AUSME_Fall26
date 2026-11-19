@@ -43,7 +43,7 @@ client on your PATH).
 ### 1. Code and dependencies
 
 ```powershell
-git clone https://github.com/ClassDBoi/DjangoProject.git
+git clone https://github.com/ClassDBoi/AUSME_Fall26.git
 cd DjangoProject
 
 # Backend
